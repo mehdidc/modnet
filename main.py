@@ -169,7 +169,9 @@ def main_worker(gpu, ngpus_per_node, args):
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    args.gpu = int(gpu)
+
+    args.gpu = gpu
+
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
 
@@ -202,7 +204,8 @@ def main_worker(gpu, ngpus_per_node, args):
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
     elif args.gpu is not None:
-        model = model.cuda()
+        torch.cuda.set_device(args.gpu)
+        model = model.cuda(args.gpu)
     else:
         # DataParallel will divide and allocate batch_size to all available GPUs
         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
