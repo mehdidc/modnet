@@ -168,7 +168,13 @@ class Controller(nn.Module):
 def basic_model(num_classes=10):
     f1 = Block(3, 64)
     f2 = Block(3, 64)
+    f3 = Block(64, 128, stride=2)
+    f4 = Block(64, 128, stride=2)
+    f5 = Block(128, 128, stride=2)
+    f6 = Block(128, 128, stride=2)
     return nn.Sequential(
         Controller([f1, f2]),
-        Classifier(64, num_classes)
+        Controller([f3, f4]),
+        Controller([f5, f6]),
+        Classifier(128, num_classes)
     )
