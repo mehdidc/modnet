@@ -151,9 +151,12 @@ class Controller(nn.Module):
         #bs, nmods
         ctl = ctl.view(ctl.size(0), -1)
         
-        D = 0
-        ctl_max = ctl.max(dim=D, keepdim=True)[0].expand(ctl.size())
-        ctl = ctl * (ctl == ctl_max).float()
+        #D = 0
+        #ctl_max = ctl.max(dim=D, keepdim=True)[0].expand(ctl.size())
+        #ctl = ctl * (ctl == ctl_max).float()
+
+        ctl = nn.Softmax(dim=1)(ctl)
+
         
         #nmods, bs
         ctl = ctl.transpose(0, 1)
