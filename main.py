@@ -117,12 +117,12 @@ def main_worker(args):
 
     # Data loading code
     if args.data == 'cifar10':
-        ft = torchvision.datasets.CIFAR10(
+        train = torchvision.datasets.CIFAR10(
             root='data', download=True, transform=train_transform)
-        eft = torchvision.datasets.CIFAR10(
+        val = torchvision.datasets.CIFAR10(
             root='data', download=True, transform=val_transform)
-        train_dataset = SubSample(ft, 0, 45000)
-        val_dataset = SubSample(eft, 45000, len(ft))
+        train_dataset = SubSample(train, 0, 45000)
+        val_dataset = SubSample(val, 45000, len(train))
     else:
         traindir = os.path.join(args.data, 'train')
         valdir = os.path.join(args.data, 'val')
