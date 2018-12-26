@@ -86,8 +86,8 @@ class Block(nn.Module):
 
     def __init__(self, inplanes, outplanes, block_type=BasicBlock, stride=1):
         super().__init__()
-        self.inplanes = inplanes
-        self.outplanes = outplanes
+        self.inplane = inplanes
+        self.outplane = outplanes
         self.block_type = block_type
         self.stride = stride
         self.block = make_block(inplanes, outplanes, block_type, 1, stride=stride)
@@ -134,6 +134,37 @@ class Model(nn.Module):
             x = f(x)
         return x
 
+class Controller(nn.Module):
+
+    def __init__(self, modules):
+        super().__init__()
+        self.inplane = modules[0].inplane 
+        self.outplane = modules[-1].outplane
+        self.controller = nn.Sequential(
+            nn.Conv2d(self.inplane, len(modules), kernel_size=1),
+            nn.AdaptiveAvgPool2d(1)
+        )
+        self.components = nn.ModuleList(modules)
+
+    def forward(self, x):
+        ctl = self.controller(x)
+        #bs, nmods
+        ctl = ctl.view(ctl.size(0), -1)
+        
+        D = 0
+        ctl_max = ctl.max(dim=D, keepdim=True)[0].expand(ctl.size())
+        ctl = ctl * (ctl == ctl_max).float()
+        
+        #nmods, bs
+        ctl = ctl.transpose(0, 1)
+        #nmods, bs, 1, 1, 1
+        ctl = ctl.view(ctl.size() + (1, 1, 1))
+        #nmods, bs, c, h, w
+        outs = torch.stack([mod(x) for mod in self.components], dim=0)
+        out = (outs * ctl).sum(0)
+        return out
+
+
 def basic_model(num_classes=10):
     functions = {
         'f0': Block(3, 64),
@@ -144,3 +175,11 @@ def basic_model(num_classes=10):
     fs = [functions[f] for f in fs]
     model = Model(fs)
     return model
+
+if __name__ == '__main__':
+    f1 = Block(3, 64)
+    f2 = Block(3, 64)
+    mod = Controller([f1, f2])
+    x = torch.rand(1, 3, 224, 224)
+    y = mod(x)
+    print(y.size())
