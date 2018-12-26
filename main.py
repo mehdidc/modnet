@@ -48,6 +48,8 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--val-size', '--val-size', default=256, type=int)
+parser.add_argument('--crop-size', '--crop-size', default=224, type=int)
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
@@ -99,30 +101,39 @@ def main():
 
 def main_worker(args):
     global best_acc1
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(224),
+        transforms.RandomResizedCrop(args.crop_size),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize,
     ])
 
     val_transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize(args.val_size),
+        transforms.CenterCrop(args.crop_size),
         transforms.ToTensor(),
         normalize,
     ])
 
     # Data loading code
     if args.data == 'cifar10':
-        train = torchvision.datasets.CIFAR10(
+        train_data_with_train_transform = torchvision.datasets.CIFAR10(
             root='data', download=True, transform=train_transform)
-        val = torchvision.datasets.CIFAR10(
+        train_data_with_val_transform = torchvision.datasets.CIFAR10(
             root='data', download=True, transform=val_transform)
-        train_dataset = SubSample(train, 0, 45000)
-        val_dataset = SubSample(val, 45000, len(train))
+        train_dataset = SubSample(train_data_with_train_transform, 0, 45000)
+        val_dataset = SubSample(train_data_with_val_transform, 45000, 50000)
+    elif args.data == 'mnist':
+        train_with_train_transform = torchvision.datasets.Mnist(
+            root='data', download=True, transform=train_transform)
+        train_with_val_transform = torchvision.datasets.Mnist(
+            root='data', download=True, transform=val_transform)
+        train_dataset = SubSample(train_with_train_transform, 0, 55000)
+        val_dataset = SubSample(train_with_val_transform, 55000, 60000)
     else:
         traindir = os.path.join(args.data, 'train')
         valdir = os.path.join(args.data, 'val')

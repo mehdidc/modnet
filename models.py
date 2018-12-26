@@ -1,9 +1,9 @@
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch
+import math
 
 def weight_init(m):
-    for m in self.modules():
     if isinstance(m, nn.Conv2d):
         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
         m.weight.data.normal_(0, math.sqrt(2. / n))
