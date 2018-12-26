@@ -166,20 +166,9 @@ class Controller(nn.Module):
 
 
 def basic_model(num_classes=10):
-    functions = {
-        'f0': Block(3, 64),
-        'f1': Block(64, 64, stride=2),
-        'f2': Classifier(64, num_classes),
-    }
-    fs = ['f0', 'f1', 'f1', 'f1', 'f2']
-    fs = [functions[f] for f in fs]
-    model = Model(fs)
-    return model
-
-if __name__ == '__main__':
     f1 = Block(3, 64)
     f2 = Block(3, 64)
-    mod = Controller([f1, f2])
-    x = torch.rand(1, 3, 224, 224)
-    y = mod(x)
-    print(y.size())
+    return nn.Sequential(
+        Controller([f1, f2]),
+        Classifier(64, num_classes)
+    )
