@@ -179,9 +179,9 @@ class Controller(nn.Module):
         return out
 
 
-def basic_model(num_classes=10):
-    f1 = Block(3, 64)
-    f2 = Block(3, 64)
+def basic_model(nb_colors=3, nb_classes=10):
+    f1 = Block(nb_colors, 64)
+    f2 = Block(nb_colors, 64)
     f3 = Block(64, 128, stride=2)
     f4 = Block(64, 128, stride=2)
     f5 = Block(128, 128, stride=2)
@@ -190,7 +190,7 @@ def basic_model(num_classes=10):
         Controller([f1, f2]),
         Controller([f3, f4]),
         Controller([f5, f6]),
-        Classifier(128, num_classes)
+        Classifier(128, nb_classes)
     )
     net.apply(weight_init)
     return net

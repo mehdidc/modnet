@@ -118,7 +118,6 @@ def main_worker(args):
         transforms.ToTensor(),
         normalize,
     ])
-
     # Data loading code
     if args.data == 'cifar10':
         train_data_with_train_transform = torchvision.datasets.CIFAR10(
@@ -127,13 +126,15 @@ def main_worker(args):
             root='data', download=True, transform=val_transform)
         train_dataset = SubSample(train_data_with_train_transform, 0, 45000)
         val_dataset = SubSample(train_data_with_val_transform, 45000, 50000)
+        nb_classes = 10
     elif args.data == 'mnist':
-        train_with_train_transform = torchvision.datasets.Mnist(
+        train_with_train_transform = torchvision.datasets.MNIST(
             root='data', download=True, transform=train_transform)
-        train_with_val_transform = torchvision.datasets.Mnist(
+        train_with_val_transform = torchvision.datasets.MNIST(
             root='data', download=True, transform=val_transform)
         train_dataset = SubSample(train_with_train_transform, 0, 55000)
         val_dataset = SubSample(train_with_val_transform, 55000, 60000)
+        nb_classes = 10
     else:
         traindir = os.path.join(args.data, 'train')
         valdir = os.path.join(args.data, 'val')
@@ -144,6 +145,8 @@ def main_worker(args):
             valdir,
             transform=val_transform
         )
+        nb_classes = len(train_dataset.classes)
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
         shuffle=True,
@@ -152,7 +155,8 @@ def main_worker(args):
         val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
-    model = basic_model()
+    nb_colors, _, _ = train_dataset[0][0].size()
+    model = basic_model(nb_colors=nb_colors, nb_classes=nb_classes)
     model = model.to(args.device)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(args.device)
