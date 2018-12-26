@@ -142,6 +142,7 @@ def main_worker(args):
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
     model = basic_model()
+    model = model.to(args.device)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
