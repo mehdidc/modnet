@@ -2,6 +2,17 @@ import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch
 
+def weight_init(m):
+    for m in self.modules():
+    if isinstance(m, nn.Conv2d):
+        n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        m.weight.data.normal_(0, math.sqrt(2. / n))
+    elif isinstance(m, nn.BatchNorm2d):
+        m.weight.data.fill_(1)
+        m.bias.data.zero_()
+    elif isinstance(m, nn.Linear):
+        m.bias.data.zero_()
+
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -175,9 +186,11 @@ def basic_model(num_classes=10):
     f4 = Block(64, 128, stride=2)
     f5 = Block(128, 128, stride=2)
     f6 = Block(128, 128, stride=2)
-    return nn.Sequential(
+    net = nn.Sequential(
         Controller([f1, f2]),
         Controller([f3, f4]),
         Controller([f5, f6]),
         Classifier(128, num_classes)
     )
+    net.apply(weight_init)
+    return net
