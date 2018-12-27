@@ -209,7 +209,7 @@ def train(config='config.cfg', *, validate_only=False):
         df = pd.DataFrame(stats)
         df.to_csv(stats_filename, index=False)
         print(df.iloc[-1])
-        auc = stats['auc_object_valid'][-1]
+        auc = stats['acc_valid'][-1]
         data = {
             'epoch': epoch + 1,
             'model': args.model,
