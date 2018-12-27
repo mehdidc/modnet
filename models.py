@@ -176,6 +176,7 @@ class ModularNetController(Controller):
         for i, decision in enumerate(ctl_decisions):
             outs.append(self.components[decision](x[i:i+1]))
         out = torch.cat(outs, dim=0)
+        print(ctl_decisions.device)
         return out, ctl_logits, ctl_decisions
 
     def forward_M_step(self, x, indices):
