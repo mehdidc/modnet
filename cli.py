@@ -540,6 +540,8 @@ class AverageMeter(object):
 
 
 def adjust_learning_rate(optimizer, nb_iter, schedule):
+    if not schedule:
+        return optimizer
     sc = get_schedule_params(nb_iter, schedule)
     new_lr = sc['lr']
     old_lr = optimizer.param_groups[0]['lr']
@@ -551,6 +553,8 @@ def adjust_learning_rate(optimizer, nb_iter, schedule):
 
 
 def adjust_loader(loader, nb_iter, schedule):
+    if not schedule:
+        return loader
     sc = get_schedule_params(nb_iter, schedule)
     if 'image_size' not in sc:
         return loader
