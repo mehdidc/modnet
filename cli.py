@@ -374,7 +374,7 @@ def validate(val_loader, model, criterion, args):
     filenames = []
     with torch.no_grad():
         end = time.time()
-        for i, (input, target, filenames_) in enumerate(val_loader):
+        for i, (input, target, filenames_, _) in enumerate(val_loader):
             filenames.extend(filenames_)
             y_true.append(target.numpy())
 
