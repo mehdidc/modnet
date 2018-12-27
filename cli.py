@@ -214,7 +214,7 @@ def train(config='config.cfg', *, validate_only=False):
         auc = stats['auc_object_valid'][-1]
         data = {
             'epoch': epoch + 1,
-            'arch': args.arch,
+            'model': args.model,
             'config': args,
             'model': model,
             'best_auc': max(auc, best_auc),
