@@ -190,8 +190,11 @@ def main_worker(args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
-
+        print('Training accuracy')
+        acc_train = validate(train_loader, model, criterion, args, nb_samples=len(val_dataset))
+        print('Validation accuracy')
+        acc_valid = validate(val_loader, model, criterion, args)
+        acc1 = acc_valid
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
@@ -252,7 +255,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
                    data_time=data_time, loss=losses, top1=top1, top5=top5))
 
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, args, nb_samples=None):
+    evaluated = 0
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -280,19 +284,11 @@ def validate(val_loader, model, criterion, args):
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
-
-            if i % args.print_freq == 0:
-                print('Test: [{0}/{1}]\t'
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                       i, len(val_loader), batch_time=batch_time, loss=losses,
-                       top1=top1, top5=top5))
-
+            evaluated += len(input)
+            if nb_samples and evaluated >= nb_samples:
+                break
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
-
     return top1.avg
 
 
