@@ -181,7 +181,8 @@ class ModularNetController(Controller):
     def forward_M_step(self, x, indices):
         ctl = self.controller(x)
         ctl_logits = ctl.view(ctl.size(0), -1)
-        ctl_decisions = self.cur_assignments[indices]
+        device = next(self.parameters()).device
+        ctl_decisions = self.cur_assignments[indices].to(device)
         outs = []
         for i, decision in enumerate(ctl_decisions):
             outs.append(self.components[decision](x[i:i+1]))
@@ -232,8 +233,6 @@ class ModularNet(nn.Module):
         #nb_trials, batch_size, nb_classes
         trial_outputs = torch.stack(trial_outputs, dim=0)
         #nb_trials, nb_controllers, batch_size
-        for d in trial_decisions:
-            print(d.device)
         trial_decisions = torch.stack(trial_decisions, dim=0)
         return trial_outputs, trial_decisions
 
