@@ -209,7 +209,8 @@ def train(config='config.cfg', *, validate_only=False):
         df = pd.DataFrame(stats)
         df.to_csv(stats_filename, index=False)
         print(df.iloc[-1])
-        auc = stats['acc_valid'][-1]
+        stat_name = 'acc_valid'
+        auc = stats[stat_name][-1]
         data = {
             'epoch': epoch + 1,
             'model': args.model,
@@ -223,7 +224,8 @@ def train(config='config.cfg', *, validate_only=False):
         torch.save(data, ckpt)
         if auc > best_auc:
             model_best = os.path.join(args.folder, 'model_best.pth.tar')
-            print('Model improved: auc valid went form {:.2f} to {:.2f}'.format(
+            print('Model improved: {} went form {:.2f} to {:.2f}'.format(
+                stat_name,
                 best_auc, auc))
             shutil.copyfile(ckpt, model_best)
             best_auc = auc
