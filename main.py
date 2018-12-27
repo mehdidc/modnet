@@ -11,9 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-import torch.distributed as dist
 import torch.optim
-import torch.multiprocessing as mp
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
@@ -33,6 +31,8 @@ parser.add_argument('data', metavar='DIR',
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('-m', '--model', default='simple', type=str)
+parser.add_argument('--data-augmentation', dest='data_augmentation', action='store_true')
+parser.add_argument('--no-data-augmentation', dest='data_augmentation', action='store_false')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -107,19 +107,23 @@ def main_worker(args):
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
         )
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(args.crop_size),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        normalize,
-    ])
+    
     val_transform = transforms.Compose([
         transforms.Resize(args.val_size),
         transforms.CenterCrop(args.crop_size),
         transforms.ToTensor(),
         normalize,
     ])
-    train_transform = val_transform
+    if args.data_augmentation:
+        print('Using data augmentation')
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(args.crop_size),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+    else:
+        train_transform = val_transform
     # Data loading code
     if args.data == 'cifar10':
         train_data_with_train_transform = torchvision.datasets.CIFAR10(
