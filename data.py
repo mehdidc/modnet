@@ -1,11 +1,9 @@
-import torch.utils.data as data
 from PIL import Image
 import torch
 from torchvision.datasets import folder
 from collections import defaultdict
 import numpy as np
 import os
-import pandas as pd
 from torchvision.datasets.folder import default_loader
 from sklearn.preprocessing import LabelEncoder
 from torchvision.datasets import ImageFolder as _ImageFolder
