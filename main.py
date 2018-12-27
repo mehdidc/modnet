@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-from models import basic_model
+import models
 from data import SubSample
 
 model_names = sorted(name for name in models.__dict__
@@ -30,13 +30,9 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
-                    help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
+parser.add_argument('-m', '--model', default='simple', type=str)
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -156,7 +152,8 @@ def main_worker(args):
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
     nb_colors, _, _ = train_dataset[0][0].size()
-    model = basic_model(nb_colors=nb_colors, nb_classes=nb_classes)
+    model = getattr(models, args.model)(
+        nb_colors=nb_colors, nb_classes=nb_classes)
     model = model.to(args.device)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(args.device)

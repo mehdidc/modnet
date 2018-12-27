@@ -168,7 +168,6 @@ class Controller(nn.Module):
 
         ctl = nn.Softmax(dim=1)(ctl)
 
-        
         #nmods, bs
         ctl = ctl.transpose(0, 1)
         #nmods, bs, 1, 1, 1
@@ -178,8 +177,22 @@ class Controller(nn.Module):
         out = (outs * ctl).sum(0)
         return out
 
+def simple(nb_colors=3, nb_classes=10):
+    net = nn.Sequential(
+        Block(nb_colors, 64),
+        Block(64, 64),
+        Block(64, 128, stride=2),
+        Block(128, 128),
+        Block(128, 256, stride=2),
+        Block(256, 256),
+        Block(256, 512, stride=2),
+        Classifier(512, nb_classes),
+    )
+    net.apply(weight_init)
+    return net
 
-def basic_model(nb_colors=3, nb_classes=10):
+
+def modular_simple(nb_colors=3, nb_classes=10):
     f1 = Block(nb_colors, 64)
     f2 = Block(nb_colors, 64)
     f3 = Block(64, 128, stride=2)
