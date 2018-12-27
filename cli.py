@@ -260,15 +260,15 @@ def _load_dataset(args):
     
     if args.data_type == 'folder':
         train_dataset = ImageFolderDataset(
-            os.path.join(args.data, 'train'),
+            os.path.join(args.data, args.train_folder),
             transform=train_transform,
         )
         eval_train_dataset = ImageFolderDataset(
-            os.path.join(args.data, 'train'),
+            os.path.join(args.data, args.valid_folder),
             transform=valid_transform,
         )
         eval_valid_dataset = ImageFolderDataset(
-            os.path.join(args.data, 'valid'),
+            os.path.join(args.data, args.valid_folder),
             transform=valid_transform,
         )
     return train_dataset, eval_train_dataset, eval_valid_dataset
