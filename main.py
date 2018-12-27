@@ -76,13 +76,9 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
-
 best_acc1 = 0
-
-
 def main():
     args = parser.parse_args()
-
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -183,11 +179,9 @@ def main_worker(args):
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
-
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
-
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch, args)
         # train for one epoch
@@ -195,10 +189,9 @@ def main_worker(args):
 
         # evaluate on validation set
         print('Training accuracy')
-        acc_train = validate(train_loader, model, criterion, args, nb_samples=len(val_dataset))
+        validate(train_loader, model, criterion, args, nb_samples=len(val_dataset))
         print('Validation accuracy')
-        acc_valid = validate(val_loader, model, criterion, args)
-        acc1 = acc_valid
+        acc1 = validate(val_loader, model, criterion, args)
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)

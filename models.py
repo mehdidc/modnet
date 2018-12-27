@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch
@@ -134,21 +135,13 @@ class FC(nn.Module):
         x = x.view(x.size(0), -1)
         return self.fc(x)
 
-
-class Model(nn.Module):
-
-    def __init__(self, funcs):
-        super().__init__()
-        self.funcs = nn.ModuleList(funcs)
-    
-    def forward(self, x):
-        for f in self.funcs:
-            x = f(x)
-        return x
-
 class Controller(nn.Module):
+    pass
 
-    def __init__(self, modules):
+
+class ModularNetController(Controller):
+
+    def __init__(self, modules, sample_size=10):
         super().__init__()
         self.inplane = modules[0].inplane 
         self.outplane = modules[-1].outplane
@@ -157,26 +150,64 @@ class Controller(nn.Module):
             nn.AdaptiveAvgPool2d(1)
         )
         self.components = nn.ModuleList(modules)
+        self.sample_size = sample_size
+        self.cur_assigmments = None
+    
+    def forward(self, x):
+        return self.forward_test(x)
+    
+    def forward_train(self, x, indices):
+        ctl = self.controller(x)
+        ctl_prob = ctl.view(ctl.size(0), -1)
+        ctl_decisions = self.cur_assignments[indices]
+        return ctl_prob, ctl_decisions
+
+    def forward_test(self, x):
+        ctl = self.controller(x)
+        ctl_prob = ctl.view(ctl.size(0), -1)
+        _, ctl_decisions = ctl_prob.max(dim=1)
+        outs = []
+        for decision in ctl_decisions:
+            outs.append(self.components[decision](x))
+        return torch.cat(outs, dim=0)
+
+    def sample(self, x):
+        ctl = self.controller(x)
+        ctl_prob = ctl.view(ctl.size(0), -1)
+        ctl_sampled = torch.multinomial(ctl_prob, self.sample_size)
+        return ctl_prob, ctl_sampled
+    
+
+class ModularNet(nn.Module):
+
+    def __init__(self, layers):
+        super().__init__()
+        self.layers = nn.ModuleList(layers)
+
+    def forward_E_step(self, x):
+        for layer in self.layers:
+            if isinstance(x, Controller):
+                x, probs = layer.sample(x)
+            else:
+                x = layer(x)
+        return x
+    
+    def forward_M_step(self, x):
+        for layer in self.layers:
+            if isinstance(x, Controller):
+                x, probs = layer(x)
+            else:
+                x = layer(x)
+        return x
 
     def forward(self, x):
-        ctl = self.controller(x)
-        #bs, nmods
-        ctl = ctl.view(ctl.size(0), -1)
-        
-        #D = 0
-        #ctl_max = ctl.max(dim=D, keepdim=True)[0].expand(ctl.size())
-        #ctl = ctl * (ctl == ctl_max).float()
+        for layer in self.layers:
+            if isinstance(x, Controller):
+                x = layer.forward_test(x)
+            else:
+                x = layer(x)
+        return x
 
-        ctl = nn.Softmax(dim=1)(ctl)
-
-        #nmods, bs
-        ctl = ctl.transpose(0, 1)
-        #nmods, bs, 1, 1, 1
-        ctl = ctl.view(ctl.size() + (1, 1, 1))
-        #nmods, bs, c, h, w
-        outs = torch.stack([mod(x) for mod in self.components], dim=0)
-        out = (outs * ctl).sum(0)
-        return out
 
 def simple(nb_colors=3, nb_classes=10):
     net = nn.Sequential(
@@ -192,7 +223,6 @@ def simple(nb_colors=3, nb_classes=10):
     net.apply(weight_init)
     return net
 
-
 def modular_simple(nb_colors=3, nb_classes=10):
     f1 = Block(nb_colors, 64)
     f2 = Block(nb_colors, 64)
@@ -200,11 +230,17 @@ def modular_simple(nb_colors=3, nb_classes=10):
     f4 = Block(64, 128, stride=2)
     f5 = Block(128, 128, stride=2)
     f6 = Block(128, 128, stride=2)
-    net = nn.Sequential(
-        Controller([f1, f2]),
-        Controller([f3, f4]),
-        Controller([f5, f6]),
+    net = ModularNet([
+        ModularNetController([f1, f2]),
+        ModularNetController([f3, f4]),
+        ModularNetController([f5, f6]),
         FC(128, nb_classes)
-    )
+    ])
     net.apply(weight_init)
     return net
+
+if __name__ == '__main__':
+    net = modular_simple()
+    x = torch.rand(1, 3, 224, 224)
+    y = net(x)
+    print(y.size())
