@@ -324,26 +324,28 @@ def train_one_epoch(train_loader, model, criterion, optimizer,
         
         output = model(input)
         
-        if i % 10 == 0:
-            output, decisions = model.forward_E_step(input)
+        if i % args.E_step_freq == 0:
+            output, decisions = model.forward_E_step(input, inds)
             model.update_assignments(inds, target, output, decisions)
-        else:
-            output, logits, decisions  = model.forward_M_step(input, inds)
-            m_step_loss = model.M_step_loss(logits, decisions)
-            loss = criterion(output, target) + m_step_loss
-            # measure accuracy and record loss
-            probas = nn.Softmax(dim=1)(output)
-            _, pred = torch.max(probas, 1)
-            acc = accuracy(pred, target)
-            train_stats['acc'].append(acc.item())
-            train_stats['loss'].append(loss.item())
-            losses.update(loss.item(), input.size(0))
-            accs.update(acc.item(), input.size(0))
+        
+        output, logits, decisions  = model.forward_M_step(input, inds)
+        m_step_loss = model.M_step_loss(logits, decisions)
+        loss = criterion(output, target) + m_step_loss
+        
+        
+        # measure accuracy and record loss
+        probas = nn.Softmax(dim=1)(output)
+        _, pred = torch.max(probas, 1)
+        acc = accuracy(pred, target)
+        train_stats['acc'].append(acc.item())
+        train_stats['loss'].append(loss.item())
+        losses.update(loss.item(), input.size(0))
+        accs.update(acc.item(), input.size(0))
 
-            # compute gradient and do SGD step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)

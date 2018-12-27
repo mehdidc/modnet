@@ -206,9 +206,16 @@ class ModularNet(nn.Module):
             ctl.cur_assignments = torch.randint(
                 len(ctl.components), (nb_examples,))
 
-    def forward_E_step(self, input):
+    def forward_E_step(self, input, indices):
         trial_outputs = []
         trial_decisions = []
+            
+        # cur assignment
+        output, _, decisions = self.forward_M_step(input, indices)
+        trial_outputs.append(output)
+        trial_decisions.append(torch.stack(decisions, dim=0))
+
+        # sampled assignments
         for trial in range(self.nb_trials):
             x = input
             controller_decisions = []
