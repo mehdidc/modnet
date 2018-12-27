@@ -170,7 +170,8 @@ class ModularNetController(Controller):
         ctl = self.controller(x)
         ctl_logits = ctl.view(ctl.size(0), -1)
         ctl_probs = nn.Softmax(dim=1)(ctl_logits)
-        ctl_decisions = torch.multinomial(ctl_probs, 1)[:, 0]
+        device = next(self.parameters()).device
+        ctl_decisions = torch.multinomial(ctl_probs, 1)[:, 0].to(device)
         outs = []
         for i, decision in enumerate(ctl_decisions):
             outs.append(self.components[decision](x[i:i+1]))
