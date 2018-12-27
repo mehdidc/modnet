@@ -145,7 +145,6 @@ def train(config='config.cfg', *, validate_only=False):
             st = _get_stats(
                 y_true, y_pred_probas,
                 class_names=model.classes,
-                neg_classes=args.neg_classes,
                 threshold=args.threshold,
                 object_threshold=args.object_threshold)
             for k, v in st.items():
@@ -182,7 +181,6 @@ def train(config='config.cfg', *, validate_only=False):
             st = _get_stats(
                 y_true, y_pred_probas,
                 class_names=model.classes,
-                neg_classes=args.neg_classes,
                 threshold=args.threshold,
                 object_threshold=args.object_threshold)
             for k, v in st.items():
@@ -191,7 +189,7 @@ def train(config='config.cfg', *, validate_only=False):
                     stats[k].append(v)
             report = classification_report(y_true.argmax(axis=1), y_pred_probas.argmax(axis=1), target_names=model.classes)
             print(report)
-            for class_name in list(model.classes) + (['object'] if len(args.neg_classes) else []):
+            for class_name in list(model.classes):
                 precisions = st['precisions_' + class_name]
                 recalls = st['recalls_' + class_name]
                 thresholds = st['thresholds_' + class_name]
@@ -276,7 +274,6 @@ def _load_dataset(args):
 
 def _get_stats(y_true, y_pred_probas,
                class_names,
-               neg_classes,
                threshold=0.5,
                object_threshold=0.5):
     y_pred = y_pred_probas > threshold
@@ -310,37 +307,6 @@ def _get_stats(y_true, y_pred_probas,
         stats['thresholds_{}'.format(name)] = thresholds
     acc = (y_pred.flatten() == y_true.flatten()).mean()
     stats['acc'] = float(acc)
-    if len(neg_classes):
-        pos_class_indices = [
-            cl for cl, name in enumerate(class_names) if name not in neg_classes]
-        neg_class_indices = [
-            cl for cl, name in enumerate(class_names) if name in neg_classes]
-        prob_object = (
-            y_pred_probas[:, pos_class_indices].sum(1) if len(pos_class_indices) else 0 -
-            y_pred_probas[:, neg_class_indices].sum(1) if len(neg_class_indices) else 0)
-        stats['prob_object'] = prob_object
-        ytrue_object = ((y_true[:, pos_class_indices].sum(1)) > 0).astype('int32')
-        precisions, recalls, thresholds = precision_recall_curve(
-            ytrue_object,
-            prob_object,
-            pos_label=1,
-        )
-        for min_recall in min_recalls:
-            prs = [p for p, r in zip(precisions, recalls) if r >= min_recall]
-            stats['max_precision_{}(recall>={:.2f})'.format('object', min_recall)] = float(max(prs)) if len(prs) else 0
-        try:
-            auc = roc_auc_score(ytrue_object, prob_object)
-        except ValueError:
-            auc = np.nan
-        stats['auc_{}'.format('object')] = float(auc)
-        stats['precisions_{}'.format('object')] = precisions
-        stats['recalls_{}'.format('object')] = recalls
-        stats['thresholds_{}'.format('object')] = thresholds
-
-        precision = precision_score(ytrue_object, prob_object > object_threshold)
-        recall = recall_score(ytrue_object, prob_object > object_threshold)
-        stats['precision_{}'.format('object')] = float(precision)
-        stats['recall_{}'.format('object')] = float(recall)
     return stats
 
 
@@ -647,156 +613,6 @@ def plot_roc_curves(config, *, split='valid'):
 def _smooth_then_compute_auc(precisions, recalls):
     precisions = np.maximum.accumulate(precisions)
     return auc(1 - precisions, recalls)
-
-
-def test(checkpoint, pattern, *,
-         threshold=0.5,
-         batch_size=None,
-         force_tta=None,
-         smooth=False,
-         predict='sum',
-         out='test_results'):
-    ckpt = torch.load(checkpoint)
-    print(ckpt['epoch'])
-    model = ckpt['model']
-    args = ckpt['config']
-    if batch_size is None:
-        batch_size = args.batch_size
-    else:
-        batch_size = int(batch_size)
-    valid_transform = ckpt['valid_transform']
-    model.eval()
-    pos_class_indices = [
-        cl for cl, name in enumerate(model.classes)
-        if name not in args.neg_classes]
-    neg_class_indices = [
-        cl for cl, name in enumerate(model.classes)
-        if name in args.neg_classes]
-    dataset = ImageFilenamesDataset(
-        sorted(glob(pattern)),
-        valid_transform
-    )
-    if force_tta is None:
-        nb_tta = args.test_time_augmentation_factor
-    else:
-        nb_tta = int(force_tta)
-    probas_avg = np.zeros((len(dataset), len(model.classes)))
-    for tta in range(nb_tta):
-        i = 0
-        loader = torch.utils.data.DataLoader(
-            dataset,
-            shuffle=False,
-            num_workers=0,
-            batch_size=batch_size,
-            collate_fn=lambda x: x,
-            pin_memory=True
-        )
-        for samples in loader:
-            X = [x for _, x, _ in samples]
-            X = torch.stack(X).to(args.device)
-            ims = [im for im, _,  _ in samples]
-            filenames = [filename for _, _, filename in samples]
-            bs = len(X)
-            with torch.no_grad():
-                output = model(X)
-                if args.loss ==' bce':
-                    probas = nn.Sigmoid()(output)
-                elif args.loss == 'cross_entropy':
-                    probas = nn.Softmax(dim=1)(output)
-                else:
-                    raise ValueError(args.loss)
-            probas = probas.cpu().numpy()
-            probas_avg[i:i+bs] = (
-                (probas_avg[i:i+bs] * tta + probas) / (tta + 1))
-            probas_cur = probas_avg[i:i+bs]
-            i += bs
-            print('[{}]/[{}]'.format(i, len(dataset)))
-            if tta < nb_tta - 1:
-                continue
-            XX = X.clone()
-            XX.requires_grad = True
-            #masks = get_detection_mask(model, XX)
-            X = X.cpu().numpy()
-            nb = 0
-            pr_frame = np.zeros((len(model.classes),))
-            for (im, filename, pr) in zip(ims, filenames, probas_cur):
-                im = np.array(im)
-                if smooth:
-                    pr_frame = pr_frame * 0.9 + pr * 0.1
-                else:
-                    pr_frame = pr
-                nb += 1
-                if predict == 'sum':
-                    prob_object = (
-                        (pr_frame[pos_class_indices].sum() if len(pos_class_indices) else 0) - 
-                        (pr_frame[neg_class_indices].sum() if len(neg_class_indices) else 0)
-                    )
-                    pred = prob_object > threshold
-                elif predict == 'argmax':
-                    prob_object = pr_frame.max()
-                    pred = pr_frame.argmax() in pos_class_indices
-                    if prob_object < threshold:
-                        pred = False
-                else:
-                    raise ValueError(predict)
-                captions = [
-                    '{}({:.2f})'.format(cli, pi)
-                    for cli, pi in zip(model.classes, pr_frame)
-                ]
-                class_name = (
-                    'object'
-                    if (pred)
-                    else 'background'
-                )
-                font = cv2.FONT_HERSHEY_PLAIN
-                font_scale = 1
-                text_color = [255, 255, 255]
-                dx = 200
-                img = np.zeros((im.shape[0], im.shape[1] + dx, 3)).astype('int32')
-                img[:, 0:im.shape[1]] = im
-                dy = 0.3
-                for caption in captions + [class_name]:
-                    img = cv2.putText(
-                        img, caption, (int(im.shape[1]), int(dy*im.shape[0])),
-                        font, font_scale,
-                        text_color,
-                        2, cv2.LINE_AA)
-                    dy += 0.05
-                if captions:
-                    xmin = im.shape[1]
-                    xmax = im.shape[1]+dx
-                    xmax_object = int(xmin + (xmax - xmin) * np.clip(prob_object/threshold, 0, 1))
-                    ymin = 0.1 * im.shape[0]
-                    ymax = 0.2 * im.shape[0]
-                    xmin = int(xmin)
-                    xmax = int(xmax)
-                    xmax_object = int(xmax_object)
-                    ymin = int(ymin)
-                    ymax = int(ymax)
-                    img = cv2.rectangle(
-                        img, (xmin, ymin), (xmax, ymax),
-                        (255, 255, 255), thickness=cv2.FILLED)
-                    img = cv2.rectangle(
-                        img, (xmin, ymin), (xmax_object, ymax),
-                        (255, 0, 0), thickness=cv2.FILLED)
-                dest = os.path.join(out, os.path.basename(filename))
-                imsave(dest, img)
-
-
-def get_detection_mask(model, X, mask_threshold=0.1):
-    # Get gradients of inputs with respect to class with max probability
-    grads = {}
-    def store_val(x):
-        grads['dx'] = x
-    X.register_hook(store_val)
-    y_pred = model(X)
-    vals, indices = y_pred.max(1)
-    L = y_pred[0, indices[0].data[0]]
-    L.backward()
-    # Compute mask
-    xgrad = grads['dx']
-    mask = xgrad.data.abs().max(1)[0].cpu().numpy() >= mask_threshold
-    return mask
 
 
 def leaderboard(pattern='trained_models/*'):
