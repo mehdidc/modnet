@@ -310,36 +310,37 @@ def _get_stats(y_true, y_pred_probas,
         stats['thresholds_{}'.format(name)] = thresholds
     acc = (y_pred.flatten() == y_true.flatten()).mean()
     stats['acc'] = float(acc)
-    pos_class_indices = [
-        cl for cl, name in enumerate(class_names) if name not in neg_classes]
-    neg_class_indices = [
-        cl for cl, name in enumerate(class_names) if name in neg_classes]
-    prob_object = (
-        y_pred_probas[:, pos_class_indices].sum(1) if len(pos_class_indices) else 0 -
-        y_pred_probas[:, neg_class_indices].sum(1) if len(neg_class_indices) else 0)
-    stats['prob_object'] = prob_object
-    ytrue_object = ((y_true[:, pos_class_indices].sum(1)) > 0).astype('int32')
-    precisions, recalls, thresholds = precision_recall_curve(
-        ytrue_object,
-        prob_object,
-        pos_label=1,
-    )
-    for min_recall in min_recalls:
-        prs = [p for p, r in zip(precisions, recalls) if r >= min_recall]
-        stats['max_precision_{}(recall>={:.2f})'.format('object', min_recall)] = float(max(prs)) if len(prs) else 0
-    try:
-        auc = roc_auc_score(ytrue_object, prob_object)
-    except ValueError:
-        auc = np.nan
-    stats['auc_{}'.format('object')] = float(auc)
-    stats['precisions_{}'.format('object')] = precisions
-    stats['recalls_{}'.format('object')] = recalls
-    stats['thresholds_{}'.format('object')] = thresholds
+    if len(neg_classes):
+        pos_class_indices = [
+            cl for cl, name in enumerate(class_names) if name not in neg_classes]
+        neg_class_indices = [
+            cl for cl, name in enumerate(class_names) if name in neg_classes]
+        prob_object = (
+            y_pred_probas[:, pos_class_indices].sum(1) if len(pos_class_indices) else 0 -
+            y_pred_probas[:, neg_class_indices].sum(1) if len(neg_class_indices) else 0)
+        stats['prob_object'] = prob_object
+        ytrue_object = ((y_true[:, pos_class_indices].sum(1)) > 0).astype('int32')
+        precisions, recalls, thresholds = precision_recall_curve(
+            ytrue_object,
+            prob_object,
+            pos_label=1,
+        )
+        for min_recall in min_recalls:
+            prs = [p for p, r in zip(precisions, recalls) if r >= min_recall]
+            stats['max_precision_{}(recall>={:.2f})'.format('object', min_recall)] = float(max(prs)) if len(prs) else 0
+        try:
+            auc = roc_auc_score(ytrue_object, prob_object)
+        except ValueError:
+            auc = np.nan
+        stats['auc_{}'.format('object')] = float(auc)
+        stats['precisions_{}'.format('object')] = precisions
+        stats['recalls_{}'.format('object')] = recalls
+        stats['thresholds_{}'.format('object')] = thresholds
 
-    precision = precision_score(ytrue_object, prob_object > object_threshold)
-    recall = recall_score(ytrue_object, prob_object > object_threshold)
-    stats['precision_{}'.format('object')] = float(precision)
-    stats['recall_{}'.format('object')] = float(recall)
+        precision = precision_score(ytrue_object, prob_object > object_threshold)
+        recall = recall_score(ytrue_object, prob_object > object_threshold)
+        stats['precision_{}'.format('object')] = float(precision)
+        stats['recall_{}'.format('object')] = float(recall)
     return stats
 
 
