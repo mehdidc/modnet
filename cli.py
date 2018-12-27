@@ -674,4 +674,4 @@ class Object(object):
 
 
 if __name__ == '__main__':
-    run([train, test, plot_roc_curves, leaderboard, clean_images, save_dataset])
+    run([train, plot_roc_curves, leaderboard, clean_images, save_dataset])
