@@ -78,7 +78,7 @@ def train(config='config.cfg', *, validate_only=False):
     parameters = model.parameters()
     optimizer = torch.optim.SGD(
         parameters,
-        args.lr,
+        args.lr_init,
         momentum=args.momentum,
         weight_decay=args.weight_decay
     )
@@ -240,7 +240,7 @@ def _load_dataset(args):
         train_transform = args.train_transform
     else:
         train_transform = transforms.Compose([
-            transforms.RandomResizedCrop(224),
+            transforms.RandomResizedCrop(args.image_resize_init),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
