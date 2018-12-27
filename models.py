@@ -120,7 +120,7 @@ def make_block(inplanes, outplanes, block, nb_blocks, stride=1):
         layers.append(block(outplanes, outplanes))
     return nn.Sequential(*layers)
 
-class Classifier(nn.Module):
+class FC(nn.Module):
 
     def __init__(self, inplane, outplane=1000):
         super().__init__()
@@ -187,7 +187,7 @@ def simple(nb_colors=3, nb_classes=10):
         Block(128, 256, stride=2),
         Block(256, 256),
         Block(256, 512, stride=2),
-        Classifier(512, nb_classes),
+        FC(512, nb_classes),
     )
     net.apply(weight_init)
     return net
@@ -204,7 +204,7 @@ def modular_simple(nb_colors=3, nb_classes=10):
         Controller([f1, f2]),
         Controller([f3, f4]),
         Controller([f5, f6]),
-        Classifier(128, nb_classes)
+        FC(128, nb_classes)
     )
     net.apply(weight_init)
     return net
