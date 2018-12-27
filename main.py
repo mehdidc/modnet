@@ -97,10 +97,16 @@ def main():
 
 def main_worker(args):
     global best_acc1
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
+    if args.data == 'mnist':
+        normalize = transforms.Normalize(
+            mean=[0, 0, 0],
+            std=[1, 1, 1]
+        )
+    else:
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(args.crop_size),
         transforms.RandomHorizontalFlip(),
