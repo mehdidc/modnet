@@ -206,8 +206,6 @@ def train(config='config.cfg', *, validate_only=False):
                 )
                 dump(d, filename)
         stats['epoch'].append(epoch)
-        for k, v in stats.items():
-            print(k, len(v))
         df = pd.DataFrame(stats)
         df.to_csv(stats_filename, index=False)
         print(df.iloc[-1])
