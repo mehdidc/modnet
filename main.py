@@ -113,13 +113,13 @@ def main_worker(args):
         transforms.ToTensor(),
         normalize,
     ])
-
     val_transform = transforms.Compose([
         transforms.Resize(args.val_size),
         transforms.CenterCrop(args.crop_size),
         transforms.ToTensor(),
         normalize,
     ])
+    train_transform = val_transform
     # Data loading code
     if args.data == 'cifar10':
         train_data_with_train_transform = torchvision.datasets.CIFAR10(
