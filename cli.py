@@ -191,7 +191,7 @@ def train(config='config.cfg', *, validate_only=False):
                     stats[k].append(v)
             report = classification_report(y_true.argmax(axis=1), y_pred_probas.argmax(axis=1), target_names=model.classes)
             print(report)
-            for class_name in list(model.classes) + ['object']:
+            for class_name in list(model.classes) + (['object'] if len(args.neg_classes) else []):
                 precisions = st['precisions_' + class_name]
                 recalls = st['recalls_' + class_name]
                 thresholds = st['thresholds_' + class_name]
