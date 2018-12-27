@@ -127,10 +127,11 @@ class Classifier(nn.Module):
         self.inplane = inplane
         self.outplane = outplane
         self.fc = nn.Linear(inplane, outplane)
-    
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+
     def forward(self, x):
-        x = x.mean(3)
-        x = x.mean(2)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
         return self.fc(x)
 
 
