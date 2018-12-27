@@ -8,7 +8,6 @@ from joblib import dump
 from clize import run
 from glob import glob
 from skimage.io import imsave
-import cv2
 
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import precision_score
@@ -28,6 +27,7 @@ import torchvision.transforms as transforms
 
 import models
 
+from data import DatasetWithIndices
 from data import ImageFilenamesDataset
 from data import ImageFolderDataset
 
@@ -38,17 +38,7 @@ def train(config='config.cfg', *, validate_only=False):
     args = _read_config(config)
     # Data loading code
     train_dataset, eval_train_dataset, eval_valid_dataset = _load_dataset(args)
-    nb_classes = len(train_dataset.classes)
-    # define loss function (criterion) and optimizer
-    if args.loss == 'bce':
-        criterion = nn.BCEWithLogitsLoss().to(args.device)
-    elif args.loss == 'cross_entropy':
-        ce = nn.CrossEntropyLoss().to(args.device)
-        def criterion(input, target):
-            _, target = target.max(1)
-            return ce(input, target)
-    else:
-        raise ValueError(args.loss)
+    criterion = nn.functional.cross_entropy
     # optionally resume from a checkpoint
     if args.resume and os.path.isfile(args.resume):
         print("=> loading checkpoint '{}'".format(args.resume))
@@ -128,10 +118,7 @@ def train(config='config.cfg', *, validate_only=False):
     for f in folders:
         if not os.path.exists(f):
             os.makedirs(f)
-    if args.test_time_augmentation:
-        validate_func = validate_with_tta
-    else:
-        validate_func = validate
+    validate_func = validate
     loaders = (
         ('train', eval_train_loader),
         ('valid', eval_valid_loader)
@@ -264,13 +251,16 @@ def _load_dataset(args):
             transform=train_transform,
         )
         eval_train_dataset = ImageFolderDataset(
-            os.path.join(args.data, args.valid_folder),
+            os.path.join(args.data, args.train_folder),
             transform=valid_transform,
         )
         eval_valid_dataset = ImageFolderDataset(
             os.path.join(args.data, args.valid_folder),
             transform=valid_transform,
         )
+    train_dataset = DatasetWithIndices(train_dataset)
+    eval_train_dataset = DatasetWithIndices(eval_train_dataset)
+    eval_valid_dataset = DatasetWithIndices(eval_valid_dataset)
     return train_dataset, eval_train_dataset, eval_valid_dataset
 
 
@@ -323,35 +313,37 @@ def train_one_epoch(train_loader, model, criterion, optimizer,
     model.train()
 
     end = time.time()
-    for i, (input, target, _) in enumerate(train_loader):
+    model.initialize_assignments(len(train_loader.dataset))
+    
+    for i, (input, target, _, inds) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
         target = target.to(args.device, non_blocking=True)
         input = input.to(args.device)
-
         # compute output
+        
         output = model(input)
-        loss = criterion(output, target)
-
-        # measure accuracy and record loss
-        if args.loss == 'bce':
-            pred = nn.Sigmoid()(output) > args.threshold
-        elif args.loss == 'cross_entropy':
+        
+        if i % 10 == 0:
+            output, decisions = model.forward_E_step(input)
+            model.update_assignments(inds, target, output, decisions)
+        else:
+            output, logits, decisions  = model.forward_M_step(input, inds)
+            m_step_loss = model.M_step_loss(logits, decisions)
+            loss = criterion(output, target) + m_step_loss
+            # measure accuracy and record loss
             probas = nn.Softmax(dim=1)(output)
             _, pred = torch.max(probas, 1)
-            _, target = torch.max(target, 1)
-        else:
-            raise ValueError(args.loss)
-        acc = accuracy(pred, target)
-        train_stats['acc'].append(acc.item())
-        train_stats['loss'].append(loss.item())
-        losses.update(loss.item(), input.size(0))
-        accs.update(acc.item(), input.size(0))
+            acc = accuracy(pred, target)
+            train_stats['acc'].append(acc.item())
+            train_stats['loss'].append(loss.item())
+            losses.update(loss.item(), input.size(0))
+            accs.update(acc.item(), input.size(0))
 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            # compute gradient and do SGD step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -392,16 +384,8 @@ def validate(val_loader, model, criterion, args):
             loss = criterion(output, target)
             losses.update(loss.item(), target.size(0))
 
-            if args.loss == 'bce':
-                probas = nn.Sigmoid()(output)
-                pred = probas > args.threshold
-            elif args.loss == 'cross_entropy':
-                probas = nn.Softmax(dim=1)(output)
-                _, pred = torch.max(probas, 1)
-                _, target = torch.max(target, 1)
-            else:
-                raise ValueError(args.loss)
-
+            probas = nn.Softmax(dim=1)(output)
+            _, pred = torch.max(probas, 1)
             acc = accuracy(pred,  target)
             accs.update(acc.item(), target.size(0))
 
@@ -423,69 +407,6 @@ def validate(val_loader, model, criterion, args):
     y_true = np.concatenate(y_true, axis=0)
     y_pred_probas = np.concatenate(y_pred_probas, axis=0)
     return {'y_true': y_true, 'y_pred_probas': y_pred_probas, 'filenames': filenames}
-
-
-def validate_with_tta(val_loader, model, criterion, args):
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    accs = AverageMeter()
-
-    # switch to evaluate mode
-    model.eval()
-    nb_classes = len(model.classes)
-    nb = len(val_loader.dataset)
-    y_true = np.empty((nb, nb_classes))
-    y_pred_probas = np.empty(
-        (nb, args.test_time_augmentation_factor, nb_classes))
-    with torch.no_grad():
-        end = time.time()
-        for j in range(args.test_time_augmentation_factor):
-            print('Pass {} on dataset'.format(j + 1))
-            idx = 0
-            for i, (input, target, _) in enumerate(val_loader):
-                bs = len(input)
-                y_true[idx:idx+bs] = target.numpy()
-
-                target = target.to(args.device, non_blocking=True)
-                input = input.to(args.device)
-
-                # compute output
-                output = model(input)
-                loss = criterion(output, target)
-                losses.update(loss.item(), target.size(0))
-
-                if args.loss == 'bce':
-                    probas = nn.Sigmoid()(output)
-                    pred = probas > args.threshold
-                elif args.loss == 'cross_entropy':
-                    probas = nn.Softmax(dim=1)(output)
-                    _, pred = torch.max(probas, 1)
-                    _, target = torch.max(target, 1)
-                else:
-                    raise ValueError(args.loss)
-
-                acc = accuracy(pred, target)
-                accs.update(acc.item(), target.size(0))
-
-                probas = probas.cpu().numpy()
-                y_pred_probas[idx:idx+bs, j] = probas
-
-                # measure elapsed time
-                batch_time.update(time.time() - end)
-                end = time.time()
-                if i % args.print_freq == 0:
-                    print('Test: [{0}/{1}]\t'
-                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                          'Acc {accs.val:.3f} ({accs.avg:.3f})\t'.format(
-                              i, len(val_loader),
-                              batch_time=batch_time,
-                              loss=losses,
-                              accs=accs))
-                idx += len(input)
-            print(' * Acc {accs.avg:.3f}'.format(accs=accs))
-    y_pred_probas = y_pred_probas.mean(axis=1)
-    return {'y_true': y_true, 'y_pred_probas': y_pred_probas}
 
 
 class AverageMeter(object):

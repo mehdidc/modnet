@@ -1,8 +1,7 @@
-from collections import defaultdict
 import torch.nn as nn
-import torch.utils.model_zoo as model_zoo
 import torch
 import math
+
 
 def weight_init(m):
     if isinstance(m, nn.Conv2d):
@@ -13,6 +12,7 @@ def weight_init(m):
         m.bias.data.zero_()
     elif isinstance(m, nn.Linear):
         m.bias.data.zero_()
+
 
 def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
@@ -94,6 +94,7 @@ class Bottleneck(nn.Module):
 
         return out
 
+
 class Block(nn.Module):
 
     def __init__(self, inplanes, outplanes, block_type=BasicBlock, stride=1):
@@ -102,7 +103,8 @@ class Block(nn.Module):
         self.outplane = outplanes
         self.block_type = block_type
         self.stride = stride
-        self.block = make_block(inplanes, outplanes, block_type, 1, stride=stride)
+        self.block = make_block(inplanes, outplanes,
+                                block_type, 1, stride=stride)
 
     def forward(self, x):
         return self.block(x)
@@ -121,6 +123,7 @@ def make_block(inplanes, outplanes, block, nb_blocks, stride=1):
         layers.append(block(outplanes, outplanes))
     return nn.Sequential(*layers)
 
+
 class FC(nn.Module):
 
     def __init__(self, inplane, outplane=1000):
@@ -135,75 +138,144 @@ class FC(nn.Module):
         x = x.view(x.size(0), -1)
         return self.fc(x)
 
+
 class Controller(nn.Module):
     pass
 
 
 class ModularNetController(Controller):
 
-    def __init__(self, modules, sample_size=10):
+    def __init__(self, modules):
         super().__init__()
-        self.inplane = modules[0].inplane 
+        self.inplane = modules[0].inplane
         self.outplane = modules[-1].outplane
         self.controller = nn.Sequential(
             nn.Conv2d(self.inplane, len(modules), kernel_size=1),
             nn.AdaptiveAvgPool2d(1)
         )
         self.components = nn.ModuleList(modules)
-        self.sample_size = sample_size
-        self.cur_assigmments = None
-    
+        self.cur_assignments = None
+
     def forward(self, x):
-        return self.forward_test(x)
-    
-    def forward_train(self, x, indices):
         ctl = self.controller(x)
-        ctl_prob = ctl.view(ctl.size(0), -1)
-        ctl_decisions = self.cur_assignments[indices]
-        return ctl_prob, ctl_decisions
-
-    def forward_test(self, x):
-        ctl = self.controller(x)
-        ctl_prob = ctl.view(ctl.size(0), -1)
-        _, ctl_decisions = ctl_prob.max(dim=1)
+        ctl_logits = ctl.view(ctl.size(0), -1)
+        _, ctl_decisions = ctl_logits.max(dim=1)
         outs = []
-        for decision in ctl_decisions:
-            outs.append(self.components[decision](x))
-        return torch.cat(outs, dim=0)
+        for i, decision in enumerate(ctl_decisions):
+            outs.append(self.components[decision](x[i:i+1]))
+        out = torch.cat(outs, dim=0)
+        return out
 
-    def sample(self, x):
+    def forward_E_step(self, x):
         ctl = self.controller(x)
-        ctl_prob = ctl.view(ctl.size(0), -1)
-        ctl_sampled = torch.multinomial(ctl_prob, self.sample_size)
-        return ctl_prob, ctl_sampled
-    
+        ctl_logits = ctl.view(ctl.size(0), -1)
+        ctl_probs = nn.Softmax(dim=1)(ctl_logits)
+        ctl_decisions = torch.multinomial(ctl_probs, 1)[:, 0]
+        outs = []
+        for i, decision in enumerate(ctl_decisions):
+            outs.append(self.components[decision](x[i:i+1]))
+        out = torch.cat(outs, dim=0)
+        return out, ctl_logits, ctl_decisions
+
+    def forward_M_step(self, x, indices):
+        ctl = self.controller(x)
+        ctl_logits = ctl.view(ctl.size(0), -1)
+        ctl_decisions = self.cur_assignments[indices]
+        outs = []
+        for i, decision in enumerate(ctl_decisions):
+            outs.append(self.components[decision](x[i:i+1]))
+        out = torch.cat(outs, dim=0)
+        return out, ctl_logits, ctl_decisions
+
 
 class ModularNet(nn.Module):
 
-    def __init__(self, layers):
+    def __init__(self, layers, nb_trials=10):
         super().__init__()
         self.layers = nn.ModuleList(layers)
+        self.nb_trials = nb_trials
 
-    def forward_E_step(self, x):
+    @property
+    def controllers(self):
         for layer in self.layers:
-            if isinstance(x, Controller):
-                x, probs = layer.sample(x)
+            if isinstance(layer, Controller):
+                yield layer
+
+    def initialize_assignments(self, nb_examples):
+        for ctl in self.controllers:
+            ctl.cur_assignments = torch.randint(
+                len(ctl.components), (nb_examples,))
+
+    def forward_E_step(self, input):
+        trial_outputs = []
+        trial_decisions = []
+        for trial in range(self.nb_trials):
+            x = input
+            controller_decisions = []
+            for layer in self.layers:
+                if isinstance(layer, Controller):
+                    x, logits, decisions = layer.forward_E_step(x)
+                    controller_decisions.append(decisions)
+                else:
+                    x = layer(x)
+            trial_outputs.append(x)
+            controller_decisions = torch.stack(controller_decisions, dim=0)
+            trial_decisions.append(controller_decisions)
+        #nb_trials, batch_size, nb_classes
+        trial_outputs = torch.stack(trial_outputs, dim=0)
+        #nb_trials, nb_controllers, batch_size
+        trial_decisions = torch.stack(trial_decisions, dim=0)
+        return trial_outputs, trial_decisions
+
+    def update_assignments(self, indices, y_true, outputs, decisions):
+        controllers = [
+            layer for layer in self.layers if isinstance(layer, Controller)]
+        #nb_trials, nb_examples
+        p = self.log_likelihood(outputs, y_true)
+        # nb_examples
+        _, best_trial = p.max(dim=0)
+        for i in range(len(indices)):
+            example_index = indices[i]
+            best_decisions = decisions[best_trial[i]]
+            for j, controller in enumerate(controllers):
+                controller.cur_assignments[example_index] = best_decisions[j][i]
+
+    def log_likelihood(self, pred, true):
+        #pred: (nb_trials, nb_examples, nb_classes)
+        #true: (nb_examples,)
+        nb_trials, nb_examples, nb_classes = pred.size()
+        pred_ = pred.view(-1, nb_classes)
+        true_ = true.view(1, -1)
+        true_ = true_.expand(pred.size(0), true.size(0))
+        true_ = true_.contiguous()
+        true_ = true_.view(-1)
+        true_ = true_.long()
+        prob = -nn.functional.cross_entropy(pred_, true_, reduction='none')
+        prob = prob.view(nb_trials, nb_examples)
+        return prob
+
+    def forward_M_step(self, x, indices):
+        logits_list = []
+        decisions_list = []
+        for layer in self.layers:
+            if isinstance(layer, Controller):
+                x, logits, decisions = layer.forward_M_step(x, indices)
+                logits_list.append(logits)
+                decisions_list.append(decisions)
             else:
                 x = layer(x)
-        return x
-    
-    def forward_M_step(self, x):
-        for layer in self.layers:
-            if isinstance(x, Controller):
-                x, probs = layer(x)
-            else:
-                x = layer(x)
-        return x
+        return x, logits_list, decisions_list
+
+    def M_step_loss(self, logits_list, decisions_list):
+        loss = 0
+        for logits, decisions in zip(logits_list, decisions_list):
+            loss += nn.functional.cross_entropy(logits, decisions)
+        return loss
 
     def forward(self, x):
         for layer in self.layers:
             if isinstance(x, Controller):
-                x = layer.forward_test(x)
+                x, probs, decisions = layer.forward_train(x)
             else:
                 x = layer(x)
         return x
@@ -223,6 +295,7 @@ def simple(nb_colors=3, nb_classes=10):
     net.apply(weight_init)
     return net
 
+
 def modular_simple(nb_colors=3, nb_classes=10):
     f1 = Block(nb_colors, 64)
     f2 = Block(nb_colors, 64)
@@ -239,8 +312,18 @@ def modular_simple(nb_colors=3, nb_classes=10):
     net.apply(weight_init)
     return net
 
+
 if __name__ == '__main__':
-    net = modular_simple()
-    x = torch.rand(1, 3, 224, 224)
-    y = net(x)
-    print(y.size())
+    net = modular_simple(nb_classes=2)
+    x = torch.rand(5, 3, 32, 32)
+    y = torch.Tensor([1, 0, 0, 1, 0])
+    net.initialize_assignments(len(x))
+
+    inds = torch.arange(0, len(x))
+    o, d = net.forward_E_step(x)
+    for cnt in net.controllers:
+        print(cnt.cur_assignments)
+    print('Update')
+    net.update_assignments(inds, y, o, d)
+    for cnt in net.controllers:
+        print(cnt.cur_assignments)

@@ -8,6 +8,20 @@ from torchvision.datasets.folder import default_loader
 from sklearn.preprocessing import LabelEncoder
 from torchvision.datasets import ImageFolder as _ImageFolder
 
+class DatasetWithIndices:
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+        self.classes = dataset.classes
+        self.transform = dataset.transform
+
+    def __getitem__(self, idx):
+        t = self.dataset[idx]
+        return t + (idx,)
+
+    def __len__(self):
+        return len(self.dataset)
+
 
 class ImageFolderDataset(_ImageFolder):
 
@@ -18,9 +32,7 @@ class ImageFolderDataset(_ImageFolder):
             sample = self.transform(sample)
         if self.target_transform is not None:
             target = self.target_transform(target)
-        label = torch.zeros(len(self.classes))
-        label[target] = 1
-        return sample, label, path
+        return sample, target, path
 
 
 class ImageFilenamesDataset:
