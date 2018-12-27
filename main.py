@@ -148,7 +148,6 @@ def main_worker(args):
             transform=val_transform
         )
         nb_classes = len(train_dataset.classes)
-
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
         shuffle=True,
@@ -161,12 +160,10 @@ def main_worker(args):
     model = getattr(models, args.model)(
         nb_colors=nb_colors, nb_classes=nb_classes)
     model = model.to(args.device)
-    # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
-
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
